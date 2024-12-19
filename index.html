@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Sparks</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            /* Full viewport height */
+            margin: 0;
+            background: #000;
+            /* Optional: background color */
+        }
+
+        .content--canvas {
+            position: absolute;
+            top: 0;
+            z-index: 1;
+            width: 100vw;
+            /* Full viewport width */
+            height: 100vh;
+            /* Full viewport height */
+        }
+
+        canvas {
+            display: block;
+
+        }
+
+
+        .hero {
+            z-index: 2;
+            width: 600px;
+            color: #fff;
+            text-align: center;
+            line-height: 42px;
+            pointer-events: none;
+        }
+
+        .hero h1 {
+            -webkit-user-select: none;
+            /* Safari */
+            -ms-user-select: none;
+            /* IE 10 and IE 11 */
+            user-select: none;
+            font-family: "Audiowide", sans-serif;
+            font-optical-sizing: auto;
+            pointer-events: none;
+            letter-spacing: 1px;
+            color: #cffafe;
+        }
+
+        .hero a {
+            font-family: "Audiowide", sans-serif;
+            pointer-events: auto;
+            text-decoration: none;
+            border: 1px solid #fff;
+            padding: 0px 20px;
+            border-radius: 100px;
+            color: #fff;
+            margin-top: 20px;
+            display: inline-block;
+            transition: background-color 0.3s, color 0.3s;
+            transition: all 0.3s ease;
+        }
+
+        .hero a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            letter-spacing: 2px;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                width: 90%;
+            }
+
+            .hero h1 {
+                font-size: 20px;
+                line-height: 30px;
+
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="content--canvas" id="canvas-container"></div>
+
+    <section class="hero">
+        <h1>
+            Mind Sparks
+        </h1>
+        <h1>
+            Resilience and technology<br> our blueprint for tomorrow.
+        </h1>
+        <a href="https://mindsparks-blog.vercel.app" target="_blank">
+            Mind Sparks Team</a>
+    </section>
+</body>
+
+<script>
+    'use strict';
+
+    // Configuration object to hold settings for particle animation and wave rendering
+    const config = {
+        particleCount: 50, // Total number of particles
+        particlePropCount: 30, // Properties per particle
+        backgroundColor: '#111827', // Background color
+        circleRadius: 250, // Radius for particle positioning
+        mouseCircleRadius: 100, // Radius for mouse interaction
+        glowStrength: 20, // Strength of the glow effect
+        baseRadius: 2, // Base radius for particles
+        rangeRadius: 3, // Variation in particle radius
+        scatterForce: 15, // Force applied during scattering
+        scatterDuration: 100, // Duration for scatter effect
+        fadeOutSpeed: 0.02, // Speed at which particles fade out
+        reformDelay: 60, // Delay before particles reform
+        startColor: {
+            h: 280,
+            s: 300,
+            l: 60
+        }, // Starting color of particles
+        endColor: {
+            h: 130,
+            s: 300,
+            l: 60
+        }, // Ending color of particles
+        baseWaveAmplitude: 30, // Base amplitude for wave sections
+        waveAmplitudeVariance: 20, // Variance in wave amplitude
+        waveSections: 8, // Number of wave sections
+        rotationSpeed: 0.0001, // Speed of wave rotation
+        waveFrequency: 9, // Frequency of peaks in waves
+        waveSpeed: 0.03, // Speed of wave animation
+        transitionSpeed: 0.1, // Speed of transition between states
+    };
+
+    let container, canvas, ctx, tick = 0,
+        particleProps;
+    let mouseX = 0,
+        mouseY = 0,
+        isMouseOnCanvas = false; // Mouse coordinates and state
+    let scatterTimeLeft = 0,
+        reformTimeLeft = 0; // Time left for scattering and reforming
+    let lastMouseX = 0,
+        lastMouseY = 0; // Last mouse position for smooth tracking
+    let waveAmplitudes; // Amplitude of waves for animation
+    const TAU = Math.PI * 2; // Full circle in radians
+
+    // Main setup function called on window load
+    function setup() {
+        createCanvas(); // Create the canvas elements
+        resize(); // Resize canvas based on window size
+        initParticles(); // Initialize particles
+        initWaveAmplitudes(); // Initialize wave amplitudes
+        draw(); // Start the animation loop
+    }
+
+    // Initialize wave amplitudes for each wave section
+    function initWaveAmplitudes() {
+        waveAmplitudes = new Array(config.waveSections).fill(0).map(() =>
+            config.baseWaveAmplitude + Math.random() * config.waveAmplitudeVariance
+        );
+    }
+
+    // Update wave amplitudes based on randomness
+    function updateWaveAmplitudes() {
+        for (let i = 0; i < config.waveSections; i++) {
+            let targetAmplitude = config.baseWaveAmplitude + Math.random() * config.waveAmplitudeVariance;
+            waveAmplitudes[i] += (targetAmplitude - waveAmplitudes[i]) * 0.1; // Smooth transition to target amplitude
+        }
+    }
+
+    // Initialize particles with their properties
+    function initParticles() {
+        particleProps = new Float32Array(config.particleCount * config.particlePropCount);
+        const angleIncrement = TAU / config.particleCount; // Angle increment based on the number of particles
+
+        for (let i = 0; i < config.particleCount; i++) {
+            initParticle(i * config.particlePropCount, i * angleIncrement); // Initialize each particle
+        }
+    }
+
+    // Initialize an individual particle's properties
+    function initParticle(i, angleOffset) {
+        const radius = config.baseRadius + rand(config.rangeRadius); // Random radius for variation
+        const hue = interpolateHue(angleOffset / TAU); // Calculate color hue based on angle
+
+        particleProps.set([
+            Math.cos(angleOffset) * config.circleRadius, // x position
+            Math.sin(angleOffset) * config.circleRadius, // y position
+            0, 0, // Initial velocities (vx, vy)
+            angleOffset, // Store original angle
+            radius, // Particle radius
+            hue, // Particle hue
+            1.0, // Initial opacity
+            0, // Initial state (0 = normal, 1 = scattering)
+            0, // Current amplitude
+            0 // Target amplitude
+        ], i);
+    }
+
+    // Interpolate the hue between start and end colors
+    function interpolateHue(t) {
+        return config.startColor.h + (config.endColor.h - config.startColor.h) * t;
+    }
+
+    // Calculate wave offset for a given angle and time
+    function calculateWaveOffset(angle, time) {
+        const rotatedAngle = (angle + time * config.rotationSpeed) % TAU; // Rotate angle over time
+        const sectionIndex = Math.floor((rotatedAngle / TAU) * config.waveSections); // Determine wave section
+        const sectionAngle = (rotatedAngle % (TAU / config.waveSections)) / (TAU / config.waveSections); // Angle within the section
+
+        const wavePhase = time * config.waveSpeed; // Calculate phase based on time
+        const amplitude = waveAmplitudes[sectionIndex]; // Get amplitude for current section
+
+        return Math.sin(sectionAngle * config.waveFrequency * TAU + wavePhase) * amplitude; // Calculate wave offset
+    }
+
+    // Update individual particle's properties
+    function updateParticle(i, centerX, centerY) {
+        const originalAngle = particleProps[i + 4]; // Original angle for wave calculations
+        let x = particleProps[i]; // Current x position
+        let y = particleProps[i + 1]; // Current y position
+        let opacity = particleProps[i + 7]; // Current opacity
+        let state = particleProps[i + 8]; // Current state (normal or scattering)
+        const hue = particleProps[i + 6]; // Current hue
+
+        if (scatterTimeLeft > 0 && state === 1) {
+            // Scatter behavior
+            x += particleProps[i + 2]; // Apply velocity to x
+            y += particleProps[i + 3]; // Apply velocity to y
+            particleProps[i + 2] *= 0.98; // Decay velocity on x
+            particleProps[i + 3] *= 0.98; // Decay velocity on y
+            particleProps[i + 3] += 0.2; // Add gravity effect
+
+            // Fade out
+            opacity -= config.fadeOutSpeed; // Decrease opacity
+            if (opacity < 0) opacity = 0; // Clamp opacity to a minimum of 0
+        } else {
+            // Wave animation behavior
+            const targetX = isMouseOnCanvas ? lastMouseX : centerX; // Use mouse position or center
+            const targetY = isMouseOnCanvas ? lastMouseY : centerY; // Use mouse position or center
+            const baseRadius = isMouseOnCanvas ? config.mouseCircleRadius : config.circleRadius; // Determine base radius
+
+            // Calculate wave offset
+            const waveOffset = calculateWaveOffset(originalAngle, tick);
+            const currentRadius = baseRadius + waveOffset; // Current radius based on wave offset
+
+            // Calculate target position for the particle
+            const targetX2 = targetX + Math.cos(originalAngle) * currentRadius;
+            const targetY2 = targetY + Math.sin(originalAngle) * currentRadius;
+
+            // Smoothly move towards target position
+            x += (targetX2 - x) * config.transitionSpeed;
+            y += (targetY2 - y) * config.transitionSpeed;
+
+            // Fade in if needed
+            opacity += config.fadeOutSpeed;
+            if (opacity > 1) opacity = 1; // Clamp opacity to a maximum of 1
+
+            state = 0; // Reset state to normal
+        }
+
+        // Update particle properties
+        particleProps[i] = x; // Update x position
+        particleProps[i + 1] = y; // Update y position
+        particleProps[i + 7] = opacity; // Update opacity
+        particleProps[i + 8] = state; // Update state
+
+        drawParticle(x, y, particleProps[i + 5], hue, opacity); // Draw the particle
+    }
+
+    // Draw an individual particle on the canvas
+    function drawParticle(x, y, radius, hue, opacity) {
+        ctx.a.save();
+        ctx.a.fillStyle = `hsla(${hue}, 100%, 60%, ${opacity})`; // Set fill color using HSLA
+        ctx.a.beginPath();
+        ctx.a.arc(x, y, radius, 0, TAU); // Create a circular path
+        ctx.a.fill(); // Fill the particle
+        ctx.a.restore();
+    }
+
+    // Draw all particles
+    function drawParticles() {
+        const centerX = canvas.a.width / 2; // Center X of the canvas
+        const centerY = canvas.a.height / 2; // Center Y of the canvas
+
+        // Smoothly update last mouse position for particles to follow
+        lastMouseX += (mouseX - lastMouseX) * config.transitionSpeed;
+        lastMouseY += (mouseY - lastMouseY) * config.transitionSpeed;
+
+        // Update and draw each particle
+        for (let i = 0; i < config.particleCount * config.particlePropCount; i += config.particlePropCount) {
+            updateParticle(i, centerX, centerY);
+        }
+    }
+
+    // Scatter particles based on mouse click
+    function scatterParticles(clickX, clickY) {
+        for (let i = 0; i < config.particleCount * config.particlePropCount; i += config.particlePropCount) {
+            const x = particleProps[i]; // Current x position
+            const y = particleProps[i + 1]; // Current y position
+
+            const dx = x - clickX; // Difference in x
+            const dy = y - clickY; // Difference in y
+            const angle = Math.atan2(dy, dx); // Angle of scattering
+            const dist = Math.sqrt(dx * dx + dy * dy); // Distance from the click
+
+            const speed = (config.scatterForce * (1 - dist / config.mouseCircleRadius)); // Calculate speed based on distance
+            particleProps[i + 2] = Math.cos(angle) * speed + (Math.random() - 0.5) * 2; // Scatter velocity in x
+            particleProps[i + 3] = Math.sin(angle) * speed + (Math.random() - 0.5) * 2; // Scatter velocity in y
+            particleProps[i + 8] = 1; // Set state to scattering
+        }
+        scatterTimeLeft = config.scatterDuration; // Reset scatter time
+        reformTimeLeft = config.reformDelay; // Reset reform time
+    }
+
+    // Create and set up the canvas for drawing
+    function createCanvas() {
+        container = document.querySelector('.content--canvas'); // Get the container for the canvas
+        canvas = {
+            a: document.createElement('canvas'),
+            b: document.createElement('canvas')
+        }; // Create two canvas elements
+        ctx = {
+            a: canvas.a.getContext('2d'),
+            b: canvas.b.getContext('2d')
+        }; // Get 2D rendering contexts
+        container.appendChild(canvas.a); // Append the first canvas to the container
+        container.appendChild(canvas.b); // Append the second canvas to the container
+        canvas.a.style.position = 'absolute'; // Set position style for proper layering
+        canvas.a.style.top = 0;
+        canvas.a.style.left = 0;
+
+        // Add event listeners for mouse interactions
+        canvas.a.addEventListener('mousemove', mouseHandler);
+        canvas.a.addEventListener('mouseenter', () => isMouseOnCanvas = true);
+        canvas.a.addEventListener('mouseleave', () => isMouseOnCanvas = false);
+        canvas.a.addEventListener('click', (e) => {
+            if (isMouseOnCanvas) {
+                scatterParticles(e.clientX, e.clientY); // Scatter on mouse click
+            }
+        });
+    }
+
+    // Handle mouse movement to update mouse position
+    function mouseHandler(e) {
+        mouseX = e.clientX; // Update global mouseX
+        mouseY = e.clientY; // Update global mouseY
+    }
+
+    // Resize the canvas elements based on window size
+    function resize() {
+        const {
+            innerWidth,
+            innerHeight
+        } = window; // Get window dimensions
+        [canvas.a.width, canvas.a.height] = [innerWidth, innerHeight]; // Set dimensions for canvas a
+        [canvas.b.width, canvas.b.height] = [innerWidth, innerHeight]; // Set dimensions for canvas b
+    }
+
+    // Render glow effects for particles
+    function renderGlow() {
+        ctx.b.save();
+        ctx.b.filter = `blur(${config.glowStrength}px) brightness(200%)`; // Apply glow effect
+        ctx.b.globalCompositeOperation = 'lighter'; // Use lighter composite operation for glowing effect
+        ctx.b.drawImage(canvas.a, 0, 0); // Draw the particles on the second canvas
+        ctx.b.restore();
+
+        ctx.b.save();
+        ctx.b.filter = `blur(${config.glowStrength / 2}px) brightness(200%)`; // Apply a lighter glow
+        ctx.b.globalCompositeOperation = 'lighter'; // Use lighter composite operation
+        ctx.b.drawImage(canvas.a, 0, 0); // Draw the particles on the second canvas
+        ctx.b.restore();
+    }
+
+    // Render the final output to screen
+    function renderToScreen() {
+        ctx.b.save();
+        ctx.b.globalCompositeOperation = 'lighter'; // Use lighter composite operation for blending
+        ctx.b.drawImage(canvas.a, 0, 0); // Draw the first canvas onto the second
+        ctx.b.restore();
+    }
+
+    // Main drawing loop for animation
+    function draw() {
+        tick++; // Increment tick count for time-based animations
+        if (reformTimeLeft > 0) reformTimeLeft--; // Decrease reform time
+        if (scatterTimeLeft > 0) scatterTimeLeft--; // Decrease scatter time
+
+        if (tick % 2 === 0) {
+            updateWaveAmplitudes(); // Update wave amplitudes every two ticks
+        }
+
+        ctx.a.clearRect(0, 0, canvas.a.width, canvas.a.height); // Clear the drawing area
+        ctx.b.fillStyle = config.backgroundColor; // Set background color
+        ctx.b.fillRect(0, 0, canvas.a.width, canvas.a.height); // Fill background
+
+        drawParticles(); // Draw particles
+        renderGlow(); // Render glow effect
+        renderToScreen(); // Render final image to screen
+        requestAnimationFrame(draw); // Continue the animation loop
+    }
+
+    // Start setup on window load and resize event
+    window.addEventListener('load', setup);
+    window.addEventListener('resize', resize);
+
+    // Utility function to generate a random number up to n
+    function rand(n) {
+        return Math.random() * n; // Return a random number between 0 and n
+    }
+</script>
+
+</html>
